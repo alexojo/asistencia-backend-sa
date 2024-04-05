@@ -5,7 +5,7 @@ const cors = require('cors');
 const { dbConnection } = require('./database/config');
 const { initCliente } = require('./whatsapp/whatsapp');
 const { createSession } = require('./whatsapp/api');
-const port = process.env.PORT || 4000;
+const port = process.env.PORT || 80;
 
 // Crear el servidor de express
 const app = express();
