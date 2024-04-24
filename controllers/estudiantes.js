@@ -427,7 +427,7 @@ const registrarAsistencia = async(req, res = response) => {
         // guardar el estudiante con la nueva asistencia
         await estudiante.save();
 
-        enviarMensajeAsistencia(req, estudiante, nuevaAsistencia);
+        // enviarMensajeAsistencia(req, estudiante, nuevaAsistencia);
 
         res.json({
             ok: true,

@@ -34,10 +34,10 @@ app.use('/api/mensajes', require('./routes/mensajes') );
 app.use('/api/whatsapp', require('./routes/whatsapp') );
 
 // Crear el cliente de whatsapp
-(async () => { 
+/* (async () => { 
     const provider = await createSession();
     app.locals.provider = provider; // Guardar cliente como una variable global
-})();
+})(); */
 
 
 // Escuchar peticiones
