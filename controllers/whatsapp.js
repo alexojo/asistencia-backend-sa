@@ -1,5 +1,8 @@
 const { response } = require('express');
 
+const { join } = require("path");
+const { createReadStream } = require("fs");
+
 const getQR = async(_, res = response) => {
     try {
         const YOUR_PATH_QR = join(process.cwd(), `bot.qr.png`);
