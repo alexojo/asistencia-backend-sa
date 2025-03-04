@@ -1,13 +1,12 @@
 const { createSession } = require("./api");
 
-
 let cliente;
 
 async function initCliente() {
-    cliente = await createSession();
+    if (!cliente) {  // ✅ Evitar múltiples inicializaciones
+        cliente = await createSession();
+    }
+    return cliente;
 }
 
-module.exports = {
-    initCliente,
-    cliente
-  };
+module.exports = { initCliente, cliente };

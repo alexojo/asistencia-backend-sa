@@ -25,7 +25,7 @@ router.post (
         check('redactado_por', 'El usuario que redacta es obligatorio').not().isEmpty(),
         check('contenido', 'El contenido es obligatorio').not().isEmpty(),
         check('fecha', 'La fecha es obligatoria').not().isEmpty(),
-        check('estudiante', 'El estudiante es obligatorio').not().isEmpty(),
+        check('dni', 'El dni es obligatorio').not().isEmpty(),
         validarCampos
     ], 
     crearMensaje );

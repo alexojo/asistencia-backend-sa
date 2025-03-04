@@ -41,6 +41,9 @@ const InstitucionSchema = Schema({
         type: Boolean,
         default: true
     },
+    dias_festivos: [{
+        type: Date,
+    }],
     asistencias_general: [{
         fecha: Date,
         hora_llegada: String,

@@ -1,6 +1,7 @@
 const { response } = require('express');
 const cron = require('cron');
 const Estudiante = require('../models/Estudiante');
+const Institucion = require('../models/Institucion');
 const axios = require('axios');
 
 // Obtener estudiantes por institución
@@ -310,17 +311,6 @@ const actualizarEstudiante = async(req, res = response) => {
             // cambiar url_foto por la url de la imagen subida
             nuevoEstudiante.url_foto = response.data.data.url ? response.data.data.url : '';
         }
-        else {
-            // eliminar foto de IMG BB
-            if ( estudianteDB.url_foto ) {
-                console.log(estudianteDB.url_foto)
-                const url = estudianteDB.url_foto.split('/');
-                console.log(url)
-                console.log(url[url.length - 2])
-                const deleteUrl = `https://api.imgbb.com/1/image/${url[url.length - 2]}?key=${process.env.IMGBB_API_KEY}`;
-                // await axios.delete( deleteUrl );
-            }
-        }
         
         delete nuevoEstudiante.foto64;
 
@@ -385,12 +375,11 @@ const eliminarEstudiante = async(req, res = response) => {
 const registrarAsistencia = async(req, res = response) => {
     
     const { dni, hora_llegada, estado } = req.body;
-
     const fecha = new Date(req.body.fecha);
 
     try {
 
-        // recuperar estudiante por dni
+        // Buscar al estudiante por DNI y verificar si ya tiene una asistencia registrada para el día
         const estudiante = await Estudiante.findOne({ dni });
 
         if (!estudiante) {
@@ -411,7 +400,7 @@ const registrarAsistencia = async(req, res = response) => {
             });
         }
 
-        // Formatear body a asistencia
+        // Crear la nueva asistencia
         const nuevaAsistencia = {
             fecha,
             hora_llegada,
@@ -427,12 +416,15 @@ const registrarAsistencia = async(req, res = response) => {
         // guardar el estudiante con la nueva asistencia
         await estudiante.save();
 
-        // enviarMensajeAsistencia(req, estudiante, nuevaAsistencia);
+        // Enviar mensaje de asistencia (opcional)
+        // await enviarMensajeAsistencia(req, estudiante, nuevaAsistencia);
 
+        // Responder con éxito
         res.json({
             ok: true,
-            msg: 'Asistencia registrada exitosamente',
-            estudiante: estudiante.nombres
+            msg: 'Asistencia registrada exitosamente.',
+            estudiante: estudiante.nombres,
+            asistencia: nuevaAsistencia
         });
 
     }
@@ -447,29 +439,26 @@ const registrarAsistencia = async(req, res = response) => {
 }
 
 // Enviar mensaje por la API de WhatsApp con la asistencia del estudiante
-const enviarMensajeAsistencia = async(req, estudiante, asistencia) => {
+const enviarMensajeAsistencia = async (req, estudiante, asistencia) => {
 
-    const provider = req.app.locals.provider;
+    const cliente = req.app.locals.cliente;  // ✅ Corrección: Se usa "cliente" en vez de "provider"
 
     try {
+        if (estudiante.apoderado !== "ninguno") {
+            const numero = (estudiante.apoderado === 'padre' || estudiante.apoderado === 'apoderado')
+                ? estudiante.nro_padre
+                : estudiante.nro_madre;
 
-        if( estudiante.apoderado !== "ninguno"){
+            const numero_whatsapp = `51${numero}@c.us`;
+            const mensaje = `📢 *Asistencia Registrada* \nEl estudiante ${estudiante.nombres} ${estudiante.apellidos} ha registrado asistencia el ${asistencia.fecha.getDate()}/${asistencia.fecha.getMonth() + 1}/${asistencia.fecha.getFullYear()} a las ${asistencia.hora_llegada} con el estado *${asistencia.estado}*.`;    
 
-            const numero = estudiante.apoderado === 'padre' || estudiante.apoderado === 'apoderado' ? estudiante.nro_padre : estudiante.nro_madre;
-
-            const numero_whatsapp = `51${numero}@c.us`
-
-            const mensaje = `Estimado(a) apoderado(a), su hijo(a) *${estudiante.nombres} ${estudiante.apellidos}* ha registrado asistencia el día *${asistencia.fecha.getDate()}/${asistencia.fecha.getMonth() + 1}/${asistencia.fecha.getFullYear()}* a las *${asistencia.hora_llegada}* con el estado *${asistencia.estado}*.`;
-
-            provider.sendText( numero_whatsapp, mensaje );
-
+            await cliente.sendMessage(numero_whatsapp, mensaje);
+            console.log("✅ Mensaje de asistencia enviado.");
         }
-
+    } catch (error) {
+        console.error('❌ Error al enviar mensaje', error);
     }
-    catch (error) {
-        console.error('Error al enviar mensaje', error);
-    }
-}
+};
 
 // Enviar mensaje por la API de WhatsApp
 
@@ -480,70 +469,63 @@ const actualizarEstadoEstudiante = async(req, res = response) => {
     try {
 
         // Obtener la fecha del día anterior
-        const fechaDiaAnterior = new Date();
-        fechaDiaAnterior.setDate(fechaDiaAnterior.getDate() - 1);
+        const fechaHoy = new Date();
+        fechaHoy.setHours(0, 0, 0, 0);
 
-        // Validar que sea entre marzo y diciembre
-        if (fechaDiaAnterior.getMonth() > 2 ) {
+        // 1. Validar si es sábado o domingo
+        const diaSemana = fechaHoy.getDay();
+        if (diaSemana === 0 || diaSemana === 6) {
+            console.log("No se actualiza estado en fines de semana.");
+            return;
+        }
 
-            // Obtener todas las instituciones
-            const instituciones = await Institucion.find();
-        
-            // Iterar sobre cada institución
-            for (const institucion of instituciones) {
+        // 2. Obtener todas las instituciones
+        const instituciones = await Institucion.find();
 
-                // Validar que la institucion haya registrado asistencias el día anterior
-                const asistenciaDiaAnterior = institucion.asistencias_general.find(asistencia => asistencia.fecha.getDate() === fechaDiaAnterior.getDate());
+        for (const institucion of instituciones) {
 
-                // Obtener todos los estudiantes de la institución
-                const estudiantes = await Estudiante.find({ institucion: institucion._id });
+            // 3. Validar si el día fue festivo para la institución
+            const esFestivo = institucion.dias_festivos.some(fechaFeriado => 
+                fechaFeriado.toDateString() === fechaHoy.toDateString()
+            );
 
-                if (!asistenciaDiaAnterior) {
+            if (esFestivo) {
+                console.log(`No se actualiza estado en día festivo (${institucion.nombre}).`);
+                continue;
+            }
 
-                    // Cambiar estado_diario de todos los estudiantes a falta
-                    for (const estudiante of estudiantes) {
-                        estudiante.estado_diario = 'falta';
-                        await estudiante.save();
-                    }
+            // 4. Validar si hubo actividades ese día (registro en asistencias_general)
+            const huboActividades = institucion.asistencias_general.some(asistencia => 
+                asistencia.fecha.toDateString() === fechaDiaAnterior.toDateString()
+            );
 
-                    console.log(`La institución ${institucion.nombre} no ha registrado asistencias el día anterior.`);
-                    continue;
-                }
+            if (!huboActividades) {
+                console.log(`No hubo actividades el día anterior en ${institucion.nombre}.`);
+                continue; // No marcar faltas
+            }
 
-                else {
+            // 5. Obtener estudiantes de la institución
+            const estudiantes = await Estudiante.find({ institucion: institucion._id });
 
-                    // Iterar sobre cada estudiante
-                    for (const estudiante of estudiantes) {
+            for (const estudiante of estudiantes) {
 
-                        // Obtener el primer elemento del arreglo de asistencias del estudiante
-                        const asistencia = estudiante.asistencias[0];
+                // 6. Verificar si el estudiante registró asistencia el día anterior
+                const asistio = estudiante.asistencias.some(asistencia => 
+                    asistencia.fecha.toDateString() === fechaHoy.toDateString()
+                );
 
-                        // Si la fecha de la asistencia es igual a la fecha del día anterior, actualizar el estado_diario del estudiante
-                        if (asistencia.fecha.getDate() === fechaDiaAnterior.getDate()) {
-                            estudiante.estado_diario = 'falta';
-                            await estudiante.save();
-                        }
-                        else{ // Si no hay asistencia del día anterior, añadir asistencia con estado 'falta'
-                            const nuevaAsistencia = {
-                                fecha: fechaDiaAnterior,
-                                hora_llegada: '00:00:00 AM',
-                                estado: 'falta'
-                            }
-                            estudiante.asistencias.unshift(nuevaAsistencia);
-                            estudiante.estado_diario = 'falta';
-                            await estudiante.save();
-                        }
-                    }
-
-                    console.log(`Se ha actualizado el estado de los estudiantes de la institución ${institucion.nombre}.`);
-
+                if (!asistio) {
+                    // 7. Marcar falta
+                    estudiante.asistencias.unshift({
+                        fecha: fechaDiaAnterior,
+                        hora_llegada: "00:00:00",
+                        estado: "falta",
+                    });
+                    estudiante.estado_diario = "falta";
+                    await estudiante.save();
                 }
             }
-            
-        }
-        else {
-            console.log('No se puede actualizar el estado de los estudiantes en enero o febrero.');
-        }
+        } 
 
     }
     catch (error) {
@@ -638,13 +620,13 @@ const funcionesCron = async () => {
     console.log("Funcion Realizada")
     
     await actualizarEstadoEstudiante();
-    await obtenerPromedioAsistenciasPorDia();
+    // await obtenerPromedioAsistenciasPorDia();
 
 };
 
-const job = new cron.CronJob('0 * * * * *', funcionesCron);
+const job = new cron.CronJob('0 10 * * * *', funcionesCron); // 0 10 * * * * (Cada día a las 10:00 am)
 
-// job.start();
+job.start();
 
 
 module.exports = {

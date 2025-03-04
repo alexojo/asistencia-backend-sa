@@ -14,9 +14,6 @@ const EstudianteSchema = Schema({
         type: String,
         required: true
     },
-    fecha_nacimiento: {
-        type: String,
-    },
     apoderado:{
         type: String,
         default: 'padre',
@@ -45,7 +42,7 @@ const EstudianteSchema = Schema({
     estado_diario: {
         type: String,
         default: 'falta',
-        estado: { type: String, enum: ['puntual', 'tarde', 'falta'] },
+        enum: ['puntual', 'tarde', 'falta'],
     },
     sexo : {
         type: String,
